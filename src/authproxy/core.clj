@@ -6,8 +6,7 @@
     ;(:import [javax.servlet Servlet])
     )
 
-(def mapping { "localhost:8080" { "/a/b" "http://www.ietf.org" 
-                                  "/nyt" "http://www.nytimes.com"} } ) 
+(def mapping { "jkrfc:8080" "http://www.ietf.org" }) 
               
 
 (comment
@@ -30,25 +29,25 @@
   [req]
   (get (:headers req) "host"))
 
-(defn- uri-target
-  "Returns the first value from the map where the key matches the beginning of the uri for the specified request"
-  [host-map req]
-  (first (filter #(.startsWith (:uri req) (get % 0)) host-map)))
+(defn- query-string
+  [req]
+  (if (nil? (:query-string req)) ""
+    (str "?" (:query-string req))))
 
 (defn- target-url
   "Returns the appropriate target url from the mapping"
   [req]
-  (let [host-map (get mapping (host-value req))
-        target (uri-target host-map req)]
-    (str (get target 1) ; the host name from the nested map
-         (.substring (:uri req) (.length (get target 0)))))) ; strip the uri key off the target url
+  (str (get mapping (host-value req)) (:uri req) (query-string req)))
 
 (defn handler [req]
   (println req)
   ;{ :status 200 })
-  (let [target (target-url req)]
-    (println "Target " target)
-   (client/get target (dissoc (:headers req) "host"))))
+  (let [target (target-url req)
+        resp (client/get target (dissoc (:headers req) "host"))]
+    (println "Routing to target " target)
+    (if (= (:status resp) 401) "Auth challenge detected" "No auth, passing to client")
+    resp))
+   
 
 (defn -main [& args]
   (run-jetty #'handler {:port 8080} ))
