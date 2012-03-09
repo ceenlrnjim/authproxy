@@ -6,7 +6,8 @@
     ;(:import [javax.servlet Servlet])
     )
 
-(def mapping { "jkrfc:8080" "http://www.ietf.org" }) 
+(def mapping { "rfc.thinkerjk.com:8080" "http://www.ietf.org" 
+               "nyt.thinkerjk.com:8080" "http://www.nytimes.com"}) 
               
 
 (comment
@@ -39,6 +40,7 @@
   [req]
   (str (get mapping (host-value req)) (:uri req) (query-string req)))
 
+; TODO: images not working 
 (defn handler [req]
   (println req)
   ;{ :status 200 })
