@@ -57,6 +57,14 @@
     (catch java.lang.Exception ioe
       (.getErrorStream connection))))
 
+(defn- write-body!
+  [req urlconn]
+  (let [osw (java.io.OutputStreamWriter. (.getOutputStream urlconn))
+        isr (java.io.InputStreamReader. (:body req))]
+    (loop [c (.read isr)]
+      (if (= -1 c) nil (do (.write osw c) (recur (.read isr)))))))
+
+
 ; TODO: support for posts
 (defn- issue-request
   "Issues a new http request to the specified target based on the specified request - this is the actual proxying"
@@ -65,7 +73,11 @@
         conn (.openConnection url)]
     (doseq [h (dissoc (:headers req) "host")]
       (.addRequestProperty conn (first h) (second h)))
-    ;(.setDoOutput conn true)
+    (.setInstanceFollowRedirects conn false)
+    (.setRequestMethod conn (http-method req))
+    (when (= :post (:request-method req)) ; TODO: add put as well
+      (.setDoOutput conn true)
+      (write-body! req conn))
     (.connect conn)
     (let [headers (convert-header-map (.getHeaderFields conn))]
       { :status (.getResponseCode conn)

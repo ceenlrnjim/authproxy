@@ -17,6 +17,10 @@
     ""
     value-list))
 
+(defn http-method
+  [req]
+  (.toUpperCase (name (:request-method req))))
+
 (defn convert-header-map
   [headers]
   (dissoc 
