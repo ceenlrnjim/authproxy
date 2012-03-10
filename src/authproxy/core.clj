@@ -10,9 +10,9 @@
   (:import [java.net URL URLConnection HttpURLConnection]))
 
 
-; TODO: may want to have host values here as well - 
 ; TODO: probably want a setting to shut off automatic auth for certain hosts
-; TODO: don't need the mapping if I don't have to override DNS in hosts file -  just direct to the host header
+
+; redirect mapping for local development
 (def mapping { "rfc.thinkerjk.com:8081" "http://www.ietf.org" 
                "nyt.thinkerjk.com:8081" "http://www.nytimes.com"
                "testapp.thinkerjk.com:8081" "http://localhost:8082"
@@ -64,8 +64,6 @@
     (loop [c (.read isr)]
       (if (= -1 c) nil (do (.write osw c) (recur (.read isr)))))))
 
-
-; TODO: support for posts
 (defn- issue-request
   "Issues a new http request to the specified target based on the specified request - this is the actual proxying"
   [req target]
@@ -110,7 +108,6 @@
   (log/debug "XXXXXXXXXXXXXXX Session " (:session req))
   ;(log/debug "Routing request:" req)
   (condp = (:uri req)
-    ;"/favicon.ico" { :status 404 } ; TODO: remove this when session thing is fixed
     "/pxylogin" (login/proxy-login req)
     "/pxyform" (login/proxy-form req)
     (proxy-handler req)))
