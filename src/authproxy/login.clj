@@ -4,9 +4,6 @@
   (:require [clojure.tools.logging :as log])
   (:require [clojure.java.io :as io]))
 
-; TODO: change this to come from command line
-(def login-url "http://pxy.thinkerjk.com:8081/pxyform")
-
 (def credentials (atom {}))
 (defn user-password
   [username]
@@ -18,7 +15,7 @@
   [req]
   (log/debug "Redirecting to proxy login page with return target: " (httputil/request-url req))
   { :status 302
-    :headers { "Location" (str login-url "?destination=" (httputil/request-url req)) }})
+    :headers { "Location" (str (System/getProperty "proxyLoginUrl") "?destination=" (httputil/request-url req)) }})
 
 (defn proxy-login
   "Login page submits to this function"

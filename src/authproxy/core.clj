@@ -87,24 +87,25 @@
 (defn- router 
   "Entry point for requests - looks at the URI to determine how the request should be processed."
   [req]
-  (log/debug "XXXXXXXXXXXXXXX Routing URI " (:uri req))
+  (log/debug "XXXXXXXXXXXXXXX Routing URI " (get (:headers req) "host") (:uri req))
   (log/debug "XXXXXXXXXXXXXXX Session " (:session req))
   ;(log/debug "Routing request:" req)
   (condp = (:uri req)
-    "/favicon.ico" { :status 404 } ; TODO: remove this when session thing is fixed
+    ;"/favicon.ico" { :status 404 } ; TODO: remove this when session thing is fixed
     "/pxylogin" (login/proxy-login req)
     "/pxyform" (login/proxy-form req)
     (proxy-handler req)))
 
-(def app-chain
-  (-> router
-    ; TODO: config for domain name
-    (wrap-session {:cookie-attrs { :domain ".thinkerjk.com" :path "/" }})
-    (wrap-params)
-    (wrap-keyword-params)
-    ))
+(defn build-app-chain
+  [domain]
+  (wrap-keyword-params 
+    (wrap-params 
+      (wrap-session router {:cookie-attrs { :domain domain :path "/" }}))))
 
 (defn -main [& args]
-  (register-authenticator)
-  ; TODO: take port number as an argument
-  (run-jetty app-chain {:port 8081} ))
+  (let [[port domain loginurl] args]
+    (System/setProperty "proxyLoginUrl" loginurl) ; TODO: must be a better way - can't using var bindings because it gets read in a different thread
+    (register-authenticator)
+    (run-jetty 
+      (build-app-chain domain)
+      {:port (Integer/parseInt port)} )))
