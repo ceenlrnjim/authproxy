@@ -5,8 +5,8 @@
   (:use ring.middleware.keyword-params)
   (:use ring.middleware.params)
   (:use authproxy.httputil)
+  (:require [authproxy.login :as login])
   (:require [clojure.tools.logging :as log])
-  (:require [clojure.java.io :as io])
   (:import [java.net URL URLConnection HttpURLConnection]))
 
 
@@ -16,13 +16,9 @@
                "nyt.thinkerjk.com:8081" "http://www.nytimes.com"
                "tcmanager.thinkerjk.com:8081" "http://localhost:8080"}) 
 
-(def login-url "http://localhost:8081/pxyform")
-
-; Vars (threadlocals) to be bound to username and *password* for a specific request
+; Vars (threadlocals) to be bound to username and password for a specific request
 (def ^:dynamic *username* nil)
 (def ^:dynamic *password* nil)
-
-(def credentials (atom {}))
 
 (defn- register-authenticator
   "Registers a default authenticator that pulls username and password from the thread local
@@ -55,6 +51,7 @@
 
 ; TODO: support for posts
 (defn- issue-request
+  "Issues a new http request to the specified target based on the specified request - this is the actual proxying"
   [req target]
   (let [url (URL. target)
         conn (.openConnection url)]
@@ -71,59 +68,29 @@
   "Provide any logic to handle any responses that require logic, otherwise just return back to client"
   [req resp]
   resp)
-  ;(cond (= (:status resp) 401) (proxy-auth req resp)
-  ;      :else resp))
 
-
-; TODO: what if the first request is a POST?
-(defn- auth-redirect
-  "returns the redirect response for an unauthenticated user"
+(defn proxy-handler 
+  "Ring handler for proxying requests - determines which host to map to and issues an http request to that host"
   [req]
-  (log/debug "Redirecting to proxy login page with return target: " (request-url req))
-  { :status 302
-    :session (assoc (:session req) "originalTarget" (request-url req))
-    :headers { "Location" login-url }})
-
-(defn proxy-handler [req]
-  (log/debug "Received request: " req)
+  (log/trace "Received request: " req)
   (let [uname (get (:session req) "proxy-user")] ; get username from session
     (if (nil? uname) ; if we don't have one, redirect to the authentication page
-        (auth-redirect req)
+        (login/auth-redirect req)
         (binding [*username* uname
-                  *password* (get @credentials uname)]
-          (log/debug "Credentials initialized: " *username* "/" *password*)
+                  *password* (login/user-password uname)]
+          (log/debug "Credentials initialized: " *username*)
           (let [target (target-url req)
                 resp (issue-request req target)]
             (proxy-response req resp))))))
 
-(defn- proxy-login
-  "Login page submits to this function"
+(defn- router 
+  "Entry point for requests - looks at the URI to determine how the request should be processed."
   [req]
-  ; TODO: add validation of credentials
-  (let [username (get (:form-params req) "username")
-        password (get (:form-params req) "password")
-        target (get (:session req) "originalTarget")]
-    (log/debug "Logging in user:" username " and directing to" target)
-    (log/debug "Request: " req)
-    (log/debug "Session: " (:session req))
-    (swap! credentials assoc username password)
-    { :status 302
-      :session (assoc (:session req) "proxy-user" username)
-      :headers { "Location" target } }))
-
-(defn- proxy-form
-  "Returns the login page"
-  [req]
-  { :status 200
-    :headers { "Content-Type" "text/html" }
-    :body (io/input-stream (io/resource "public/pxyform.html"))})
-
-(defn- router [req]
   ;(log/debug "Routing request:" req)
   (condp = (:uri req)
-    "/favicon.ico" { :status 404 }
-    "/pxylogin" (proxy-login req)
-    "/pxyform" (proxy-form req)
+    "/favicon.ico" { :status 404 } ; TODO: remove this when session thing is fixed
+    "/pxylogin" (login/proxy-login req)
+    "/pxyform" (login/proxy-form req)
     (proxy-handler req)))
 
 (def app-chain
@@ -133,8 +100,8 @@
     (wrap-keyword-params)
     ;(wrap-resource "public")
     ))
-   
 
 (defn -main [& args]
   (register-authenticator)
+  ; TODO: take port number as an argument
   (run-jetty app-chain {:port 8081} ))
