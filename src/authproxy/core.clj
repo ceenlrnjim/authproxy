@@ -1,8 +1,14 @@
 (ns authproxy.core
   (:use ring.adapter.jetty)
+  (:use ring.middleware.resource)
+  (:use ring.middleware.session)
+  (:use ring.middleware.keyword-params)
+  (:use ring.middleware.params)
+  (:use authproxy.httputil)
   (:require [clojure.tools.logging :as log])
-  ;(:require [clj-http.client :as client])
+  (:require [clojure.java.io :as io])
   (:import [java.net URL URLConnection HttpURLConnection]))
+
 
 ; TODO: may want to have host values here as well - 
 ; TODO: probably want a setting to shut off automatic auth for certain hosts
@@ -10,13 +16,13 @@
                "nyt.thinkerjk.com:8081" "http://www.nytimes.com"
                "tcmanager.thinkerjk.com:8081" "http://localhost:8080"}) 
 
+(def login-url "http://localhost:8081/pxyform")
+
 ; Vars (threadlocals) to be bound to username and *password* for a specific request
 (def ^:dynamic *username* nil)
 (def ^:dynamic *password* nil)
 
-; Credential store for all logged in users
-; TODO: ultimately want to capture user credentials and save to their session
-(def credentials (atom {"tomcat" "tomcat"}))
+(def credentials (atom {}))
 
 (defn- register-authenticator
   "Registers a default authenticator that pulls username and password from the thread local
@@ -28,15 +34,6 @@
         (log/debug "Creating password authentication for " *username* "/" *password*)
         (java.net.PasswordAuthentication. *username* (.toCharArray *password*))))))
 
-(defn- host-value
-  "Returns the host header value from the specified request"
-  [req]
-  (get (:headers req) "host"))
-
-(defn- query-string
-  [req]
-  (if (nil? (:query-string req)) ""
-    (str "?" (:query-string req))))
 
 (defn- target-url
   "Returns the appropriate target url from the mapping"
@@ -46,21 +43,6 @@
     (log/debug "Generating target " target " for host " host)
     target))
 
-(defn- header-list-to-string
-  [value-list]
-  (reduce 
-    #(str %1 (if (= %1 "") "" ", ") %2)
-    ""
-    value-list))
-
-(defn- convert-header-map
-  [headers]
-  (dissoc 
-    (reduce
-      #(assoc %1 (.getKey %2) (header-list-to-string (.getValue %2)))
-      {}
-      headers)
-    nil)) ; remove the HTTP 1.1/200 OK line 
 
 (defn- return-stream
   "Handles exceptions thrown when there is a non-successful response code and switches to the 
@@ -85,18 +67,6 @@
         :headers headers
         :body (return-stream conn) })))
 
-; TODO: support SPNEGO, NTLM, etc,
-; Starting with just Basic auth
-; TODO: currently not doing anything - seeing if the java authenticator will do everything I need
-; TODO: do I need to do this or will the java.net.authenticator take care of everything?
-;(defn- proxy-auth
-;  "Handles an authentication request returned by a proxied web location.
-;  req is the original request to the proxy
-;  resp is the response generated from the proxied web site"
-;  [req resp]
-;  (log/debug "Handling auth request...")
-;  resp)
-
 (defn- proxy-response
   "Provide any logic to handle any responses that require logic, otherwise just return back to client"
   [req resp]
@@ -104,18 +74,67 @@
   ;(cond (= (:status resp) 401) (proxy-auth req resp)
   ;      :else resp))
 
-(defn handler [req]
+
+; TODO: what if the first request is a POST?
+(defn- auth-redirect
+  "returns the redirect response for an unauthenticated user"
+  [req]
+  (log/debug "Redirecting to proxy login page with return target: " (request-url req))
+  { :status 302
+    :session (assoc (:session req) "originalTarget" (request-url req))
+    :headers { "Location" login-url }})
+
+(defn proxy-handler [req]
   (log/debug "Received request: " req)
-  ;{ :status 200 })
-  ; TODO: look at session, get user identifier and then use that to look up credentials in the credentials atom
-  (binding [*username* "tomcat"
-            *password* (get @credentials "tomcat")]
-    (log/debug "Credentials initialized: " *username* "/" *password*)
-    (let [target (target-url req)
-          resp (issue-request req target)]
-      (proxy-response req resp))))
+  (let [uname (get (:session req) "proxy-user")] ; get username from session
+    (if (nil? uname) ; if we don't have one, redirect to the authentication page
+        (auth-redirect req)
+        (binding [*username* uname
+                  *password* (get @credentials uname)]
+          (log/debug "Credentials initialized: " *username* "/" *password*)
+          (let [target (target-url req)
+                resp (issue-request req target)]
+            (proxy-response req resp))))))
+
+(defn- proxy-login
+  "Login page submits to this function"
+  [req]
+  ; TODO: add validation of credentials
+  (let [username (get (:form-params req) "username")
+        password (get (:form-params req) "password")
+        target (get (:session req) "originalTarget")]
+    (log/debug "Logging in user:" username " and directing to" target)
+    (log/debug "Request: " req)
+    (log/debug "Session: " (:session req))
+    (swap! credentials assoc username password)
+    { :status 302
+      :session (assoc (:session req) "proxy-user" username)
+      :headers { "Location" target } }))
+
+(defn- proxy-form
+  "Returns the login page"
+  [req]
+  { :status 200
+    :headers { "Content-Type" "text/html" }
+    :body (io/input-stream (io/resource "public/pxyform.html"))})
+
+(defn- router [req]
+  ;(log/debug "Routing request:" req)
+  (condp = (:uri req)
+    "/favicon.ico" { :status 404 }
+    "/pxylogin" (proxy-login req)
+    "/pxyform" (proxy-form req)
+    (proxy-handler req)))
+
+(def app-chain
+  (-> router
+    (wrap-session)
+    (wrap-params)
+    (wrap-keyword-params)
+    ;(wrap-resource "public")
+    ))
    
 
 (defn -main [& args]
   (register-authenticator)
-  (run-jetty #'handler {:port 8081} ))
+  (run-jetty app-chain {:port 8081} ))
