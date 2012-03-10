@@ -1,5 +1,6 @@
 (ns authproxy.login
   (:require [authproxy.httputil :as httputil])
+  (:use ring.util.response)
   (:require [clojure.tools.logging :as log])
   (:require [clojure.java.io :as io]))
 
@@ -17,17 +18,14 @@
   [req]
   (log/debug "Redirecting to proxy login page with return target: " (httputil/request-url req))
   { :status 302
-   ; TODO: need to get rid of all this session stuff and put URL on the login form
-    :session (assoc (:session req) "originalTarget" (httputil/request-url req))
-    :headers { "Location" login-url }})
+    :headers { "Location" (str login-url "?destination=" (httputil/request-url req)) }})
 
 (defn proxy-login
   "Login page submits to this function"
   [req]
-  ; TODO: add validation of credentials
   (let [username (get (:form-params req) "username")
         password (get (:form-params req) "password")
-        target (get (:session req) "originalTarget")]
+        target (get (:form-params req) "destination")]
     (log/debug "Logging in user:" username " and directing to" target)
     (log/debug "Request: " req)
     (log/debug "Session: " (:session req))
@@ -36,10 +34,16 @@
       :session (assoc (:session req) "proxy-user" username)
       :headers { "Location" target } }))
 
+(defn- apply-destination
+  "returns an input stream to the generic logic form with the destination applied"
+  [req]
+  (let [raw (slurp (io/resource "public/pxyform.html"))]
+    (java.io.BufferedInputStream. (java.io.ByteArrayInputStream. (.getBytes (.replace raw "X-DESTINATION-X" (get (:params req) "destination")))))))
+
 (defn proxy-form
   "Returns the login page"
   [req]
   { :status 200
     :headers { "Content-Type" "text/html" }
-    :body (io/input-stream (io/resource "public/pxyform.html"))})
+    :body (apply-destination req) })
 

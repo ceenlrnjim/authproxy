@@ -86,7 +86,8 @@
 (defn- router 
   "Entry point for requests - looks at the URI to determine how the request should be processed."
   [req]
-  ;(log/debug "Routing request:" req)
+  (log/debug "XXXXXXXXXXXXXXX Routing URI " (:uri req))
+  (log/debug "Routing request:" req)
   (condp = (:uri req)
     "/favicon.ico" { :status 404 } ; TODO: remove this when session thing is fixed
     "/pxylogin" (login/proxy-login req)
@@ -98,7 +99,6 @@
     (wrap-session)
     (wrap-params)
     (wrap-keyword-params)
-    ;(wrap-resource "public")
     ))
 
 (defn -main [& args]
