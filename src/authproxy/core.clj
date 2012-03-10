@@ -15,7 +15,24 @@
 ; TODO: don't need the mapping if I don't have to override DNS in hosts file -  just direct to the host header
 (def mapping { "rfc.thinkerjk.com:8081" "http://www.ietf.org" 
                "nyt.thinkerjk.com:8081" "http://www.nytimes.com"
+               "testapp.thinkerjk.com:8081" "http://localhost:8082"
                "tcmanager.thinkerjk.com:8081" "http://localhost:8080"}) 
+
+(defn- lookup-mapper
+  "Returns the url to proxy a request to based on the mapping above.
+  This is required where you're running the proxy and the service on the same host
+  (like in development) and have to modify hosts to have multiple names to this host"
+  [req]
+  (str (get mapping (host-value req)) (:uri req) (query-string req)))
+
+(defn- passthrough-mapper
+  "Mapper that just directs to the content of the host header"
+  [req]
+  (request-url req))
+
+; Switch definition when not running proxy on same host as target sites
+(def mapper lookup-mapper)
+
 
 ; Vars (threadlocals) to be bound to username and password for a specific request
 (def ^:dynamic *username* nil)
@@ -30,16 +47,6 @@
       (getPasswordAuthentication []
         (log/debug "Creating password authentication for " *username* "/" *password*)
         (java.net.PasswordAuthentication. *username* (.toCharArray *password*))))))
-
-
-(defn- target-url
-  "Returns the appropriate target url from the mapping"
-  [req]
-  (let [host (host-value req)
-        target (str (get mapping (host-value req)) (:uri req) (query-string req))]
-    (log/debug "Generating target " target " for host " host)
-    target))
-
 
 (defn- return-stream
   "Handles exceptions thrown when there is a non-successful response code and switches to the 
@@ -80,7 +87,7 @@
         (binding [*username* uname
                   *password* (login/user-password uname)]
           (log/debug "Credentials initialized: " *username*)
-          (let [target (target-url req)
+          (let [target (mapper req)
                 resp (issue-request req target)]
             (proxy-response req resp))))))
 
@@ -103,9 +110,11 @@
       (wrap-session router {:cookie-attrs { :domain domain :path "/" }}))))
 
 (defn -main [& args]
-  (let [[port domain loginurl] args]
-    (System/setProperty "proxyLoginUrl" loginurl) ; TODO: must be a better way - can't using var bindings because it gets read in a different thread
-    (register-authenticator)
-    (run-jetty 
-      (build-app-chain domain)
-      {:port (Integer/parseInt port)} )))
+  (if (< (count args) 3) 
+      (println "Usage: port domain loginurl")
+      (let [[port domain loginurl] args]
+        (System/setProperty "proxyLoginUrl" loginurl) ; TODO: must be a better way - can't using var bindings because it gets read in a different thread
+        (register-authenticator)
+        (run-jetty 
+          (build-app-chain domain)
+          {:port (Integer/parseInt port)} ))))
