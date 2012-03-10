@@ -5,7 +5,7 @@
   (:require [clojure.java.io :as io]))
 
 ; TODO: change this to come from command line
-(def login-url "http://localhost:8081/pxyform")
+(def login-url "http://pxy.thinkerjk.com:8081/pxyform")
 
 (def credentials (atom {}))
 (defn user-password

@@ -12,6 +12,7 @@
 
 ; TODO: may want to have host values here as well - 
 ; TODO: probably want a setting to shut off automatic auth for certain hosts
+; TODO: don't need the mapping if I don't have to override DNS in hosts file -  just direct to the host header
 (def mapping { "rfc.thinkerjk.com:8081" "http://www.ietf.org" 
                "nyt.thinkerjk.com:8081" "http://www.nytimes.com"
                "tcmanager.thinkerjk.com:8081" "http://localhost:8080"}) 
@@ -87,7 +88,8 @@
   "Entry point for requests - looks at the URI to determine how the request should be processed."
   [req]
   (log/debug "XXXXXXXXXXXXXXX Routing URI " (:uri req))
-  (log/debug "Routing request:" req)
+  (log/debug "XXXXXXXXXXXXXXX Session " (:session req))
+  ;(log/debug "Routing request:" req)
   (condp = (:uri req)
     "/favicon.ico" { :status 404 } ; TODO: remove this when session thing is fixed
     "/pxylogin" (login/proxy-login req)
@@ -96,7 +98,8 @@
 
 (def app-chain
   (-> router
-    (wrap-session)
+    ; TODO: config for domain name
+    (wrap-session {:cookie-attrs { :domain ".thinkerjk.com" :path "/" }})
     (wrap-params)
     (wrap-keyword-params)
     ))

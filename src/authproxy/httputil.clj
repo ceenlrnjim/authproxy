@@ -40,5 +40,5 @@
 
 (defn request-url
   [req]
-  (cappend (name (:scheme req)) "://" (:server-name req) [":" (:server-port req)] ["/" (:uri req)] ["?" (:query-string req)]))
+  (cappend (name (:scheme req)) "://" (:server-name req) [":" (:server-port req)] (:uri req) ["?" (:query-string req)]))
 
