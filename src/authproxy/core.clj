@@ -15,7 +15,7 @@
 ; redirect mapping for local development
 (def mapping { "rfc.thinkerjk.com:8081" "http://www.ietf.org" 
                "nyt.thinkerjk.com:8081" "http://www.nytimes.com"
-               "testapp.thinkerjk.com:8081" "http://localhost:8082"
+               "testapp.thinkerjk.com:8081" "http://localhost:8080"
                "tcmanager.thinkerjk.com:8081" "http://localhost:8080"}) 
 
 (defn- lookup-mapper
@@ -57,30 +57,42 @@
     (catch java.lang.Exception ioe
       (.getErrorStream connection))))
 
+; file uploads, multi-part stuff will break this
 (defn- write-body!
   [req urlconn]
   (let [osw (java.io.OutputStreamWriter. (.getOutputStream urlconn))
-        isr (java.io.InputStreamReader. (:body req))]
-    (loop [c (.read isr)]
-      (if (= -1 c) nil (do (.write osw c) (recur (.read isr)))))))
+        ^String body (reduce 
+                      #(str 
+                         %1
+                         (if (= "" %1) "" "&")
+                         ; TODO: get encoding from the request?
+                         (java.net.URLEncoder/encode (first %2) "UTF-8") 
+                         "=" 
+                         ; TODO: get encoding from the request?
+                         (java.net.URLEncoder/encode (second %2) "UTF-8")) 
+                       "" 
+                       (:form-params req))]
+    (log/debug "write-body!> Params" (:form-params req) "yield form body" body)
+    (.write osw body)
+    (.flush osw)))
 
 (defn- issue-request
-  "Issues a new http request to the specified target based on the specified request - this is the actual proxying"
-  [req target]
-  (let [url (URL. target)
+  "Issues a new http request to the appropriate target based on the specified request - this is the actual proxying"
+  [req]
+  (let [url (URL. (mapper req))
         conn (.openConnection url)]
-    (doseq [h (dissoc (:headers req) "host")]
-      (.addRequestProperty conn (first h) (second h)))
     (.setInstanceFollowRedirects conn false)
     (.setRequestMethod conn (http-method req))
+    (doseq [h (dissoc (:headers req) "host")] ; TODO: do I want to remove host when not running in development
+      (.addRequestProperty conn (first h) (second h)))
     (when (= :post (:request-method req)) ; TODO: add put as well
+      (log/debug "Found post request - writing body")
       (.setDoOutput conn true)
       (write-body! req conn))
     (.connect conn)
-    (let [headers (convert-header-map (.getHeaderFields conn))]
-      { :status (.getResponseCode conn)
-        :headers headers
-        :body (return-stream conn) })))
+    { :status (.getResponseCode conn)
+      :headers (convert-header-map (.getHeaderFields conn))
+      :body (return-stream conn) }))
 
 (defn- proxy-response
   "Provide any logic to handle any responses that require logic, otherwise just return back to client"
@@ -97,16 +109,12 @@
         (binding [*username* uname
                   *password* (login/user-password uname)]
           (log/debug "Credentials initialized: " *username*)
-          (let [target (mapper req)
-                resp (issue-request req target)]
-            (proxy-response req resp))))))
+          (proxy-response req (issue-request req))))))
 
 (defn- router 
   "Entry point for requests - looks at the URI to determine how the request should be processed."
   [req]
-  (log/debug "XXXXXXXXXXXXXXX Routing URI " (get (:headers req) "host") (:uri req))
-  (log/debug "XXXXXXXXXXXXXXX Session " (:session req))
-  ;(log/debug "Routing request:" req)
+  (log/debug "Routing URI " (get (:headers req) "host") (:uri req) "for session" (:session req))
   (condp = (:uri req)
     "/pxylogin" (login/proxy-login req)
     "/pxyform" (login/proxy-form req)
