@@ -31,6 +31,16 @@
       :session (assoc (:session req) "proxy-user" username)
       :headers { "Location" target } }))
 
+(defn proxy-logout
+  "Logs the current user out of the proxy so subsequent auto-authentication won't happen"
+  [{session :session}]
+  (let [username (get session "proxy-user")]
+    (swap! credentials dissoc username)
+    { :status 200
+      :session (dissoc session "proxy-user")
+      :body (io/input-stream (io/resource "public/pxylogoutconfirm.html"))}))
+
+
 (defn- apply-destination
   "returns an input stream to the generic logic form with the destination applied"
   [req]

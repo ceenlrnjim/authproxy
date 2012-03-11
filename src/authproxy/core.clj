@@ -121,6 +121,7 @@
   (log/debug "Routing URI " (get (:headers req) "host") (:uri req) "for session" (:session req))
   (condp = (:uri req)
     "/pxylogin" (login/proxy-login req)
+    "/pxylogout" (login/proxy-logout req)
     "/pxyform" (login/proxy-form req)
     (proxy-handler req)))
 
