@@ -31,12 +31,12 @@
   [req]
   (request-url req))
 
-; TODO: need a mapper that leaves server names but handles port differences
+; TODO: may need a mapper that leaves server names but handles port differences
 
-; Switch definition when not running proxy on same host as target sites
-;(def mapper lookup-mapper)
-(def mapper passthrough-mapper)
-
+; uses the weird mapping file where everything runs on one box if the environment variable is set to dev
+(if (= (System/getProperty "authproxy.env" "dev"))
+  (def mapper lookup-mapper)
+  (def mapper passthrough-mapper))
 
 ; Vars (threadlocals) to be bound to username and password for a specific request
 (def ^:dynamic *username* nil)
@@ -85,6 +85,7 @@
   [req]
   (let [url (URL. (mapper req))
         conn (.openConnection url)]
+    (log/debug "- Sending" (http-method req) "request to" (mapper req))
     (.setInstanceFollowRedirects conn false)
     (.setRequestMethod conn (http-method req))
     (doseq [h (dissoc (:headers req) "host")] ; TODO: do I want to remove host when not running in development
@@ -108,6 +109,7 @@
   [req]
   (log/trace "Received request: " req)
   (let [uname (get (:session req) "proxy-user")] ; get username from session
+    ; TODO: also check that the credentials exist as well as the cookie (in case credential propagation and session replication get out of sync
     (if (nil? uname) ; if we don't have one, redirect to the authentication page
         (login/auth-redirect req)
         (binding [*username* uname
@@ -135,7 +137,8 @@
   (if (< (count args) 3) 
       (println "Usage: port domain loginurl")
       (let [[port domain loginurl] args]
-        (System/setProperty "proxyLoginUrl" loginurl) ; TODO: must be a better way - can't using var bindings because it gets read in a different thread
+        ; TODO: is this the best way to pass this configuration
+        (compare-and-set! authproxy.login/login-url nil loginurl)
         (register-authenticator)
         (run-jetty 
           (build-app-chain domain)

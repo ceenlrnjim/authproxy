@@ -4,6 +4,7 @@
   (:require [clojure.tools.logging :as log])
   (:require [clojure.java.io :as io]))
 
+(def login-url (atom nil))
 (def credentials (atom {}))
 (defn user-password
   [username]
@@ -15,7 +16,7 @@
   [req]
   (log/debug "Redirecting to proxy login page with return target: " (httputil/request-url req))
   { :status 302
-    :headers { "Location" (str (System/getProperty "proxyLoginUrl") "?destination=" (httputil/request-url req)) }})
+    :headers { "Location" (str @login-url "?destination=" (httputil/request-url req)) }})
 
 (defn proxy-login
   "Login page submits to this function"
@@ -24,8 +25,8 @@
         password (get (:form-params req) "password")
         target (get (:form-params req) "destination")]
     (log/debug "Logging in user:" username " and directing to" target)
-    (log/debug "Request: " req)
-    (log/debug "Session: " (:session req))
+    ;(log/debug "Request: " req)
+    ;(log/debug "Session: " (:session req))
     (swap! credentials assoc username password)
     { :status 302
       :session (assoc (:session req) "proxy-user" username)
