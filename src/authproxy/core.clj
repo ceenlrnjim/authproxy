@@ -7,7 +7,8 @@
   (:use authproxy.httputil)
   (:require [authproxy.login :as login])
   (:require [clojure.tools.logging :as log])
-  (:import [java.net URL URLConnection HttpURLConnection]))
+  (:import [java.net URL URLConnection HttpURLConnection])
+  (:gen-class))
 
 
 ; TODO: probably want a setting to shut off automatic auth for certain hosts
@@ -30,8 +31,11 @@
   [req]
   (request-url req))
 
+; TODO: need a mapper that leaves server names but handles port differences
+
 ; Switch definition when not running proxy on same host as target sites
-(def mapper lookup-mapper)
+;(def mapper lookup-mapper)
+(def mapper passthrough-mapper)
 
 
 ; Vars (threadlocals) to be bound to username and password for a specific request
