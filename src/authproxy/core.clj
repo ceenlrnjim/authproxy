@@ -49,7 +49,7 @@
   (java.net.Authenticator/setDefault
     (proxy [java.net.Authenticator] []
       (getPasswordAuthentication []
-        (log/debug "Creating password authentication for " *username* "/" *password*)
+        (log/trace "Creating password authentication for " *username*)
         (java.net.PasswordAuthentication. *username* (.toCharArray *password*))))))
 
 (defn- return-stream
