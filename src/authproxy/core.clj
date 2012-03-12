@@ -34,7 +34,7 @@
 ; TODO: may need a mapper that leaves server names but handles port differences
 
 ; uses the weird mapping file where everything runs on one box if the environment variable is set to dev
-(if (= (System/getProperty "authproxy.env" "dev"))
+(if (= (System/getProperty "authproxy.env") "dev")
   (def mapper lookup-mapper)
   (def mapper passthrough-mapper))
 
