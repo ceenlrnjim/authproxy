@@ -27,6 +27,7 @@
     (log/debug "Logging in user:" username " and directing to" target)
     ;(log/debug "Request: " req)
     ;(log/debug "Session: " (:session req))
+    ;TODO: validate credentials before storing - LDAPS bind to AD
     (swap! credentials assoc username password)
     { :status 302
       :session (assoc (:session req) "proxy-user" username)
@@ -45,6 +46,7 @@
 (defn- apply-destination
   "returns an input stream to the generic logic form with the destination applied"
   [req]
+  (println req)
   (let [raw (slurp (io/resource "public/pxyform.html"))]
     (java.io.BufferedInputStream. (java.io.ByteArrayInputStream. (.getBytes (.replace raw "X-DESTINATION-X" (get (:params req) "destination")))))))
 

@@ -8,6 +8,7 @@
   (:require [authproxy.login :as login])
   (:require [clojure.tools.logging :as log])
   (:import [java.net URL URLConnection HttpURLConnection])
+  (:import [org.apache.commons.io IOUtils])
   (:gen-class))
 
 
@@ -29,6 +30,7 @@
 (defn- passthrough-mapper
   "Mapper that just directs to the content of the host header"
   [req]
+  (log/debug "PASSTHROUGH MAPPER")
   (request-url req))
 
 ; TODO: may need a mapper that leaves server names but handles port differences
@@ -63,22 +65,9 @@
 
 ; file uploads, multi-part stuff will break this
 (defn- write-body!
+  "For post/put requests, copies the contents from the request's input stream to the output stream for the URLconnection"
   [req urlconn]
-  (let [osw (java.io.OutputStreamWriter. (.getOutputStream urlconn))
-        ^String body (reduce 
-                      #(str 
-                         %1
-                         (if (= "" %1) "" "&")
-                         ; TODO: get encoding from the request?
-                         (java.net.URLEncoder/encode (first %2) "UTF-8") 
-                         "=" 
-                         ; TODO: get encoding from the request?
-                         (java.net.URLEncoder/encode (second %2) "UTF-8")) 
-                       "" 
-                       (:form-params req))]
-    (log/debug "write-body!> Params" (:form-params req) "yield form body" body)
-    (.write osw body)
-    (.flush osw)))
+  (IOUtils/copy (:body req) (.getOutputStream urlconn)))
 
 (defn- issue-request
   "Issues a new http request to the appropriate target based on the specified request - this is the actual proxying"
@@ -104,7 +93,7 @@
   [req resp]
   resp)
 
-(defn proxy-handler 
+(defn- proxy-handler 
   "Ring handler for proxying requests - determines which host to map to and issues an http request to that host"
   [req]
   (log/trace "Received request: " req)
@@ -122,16 +111,20 @@
   [req]
   (log/debug "Routing URI " (get (:headers req) "host") (:uri req) "for session" (:session req))
   (condp = (:uri req)
-    "/pxylogin" (login/proxy-login req)
-    "/pxylogout" (login/proxy-logout req)
-    "/pxyform" (login/proxy-form req)
-    (proxy-handler req)))
+    "/pxylogin" ((wrap-params login/proxy-login) req)
+    "/pxylogout" ((wrap-params login/proxy-logout) req)
+    "/pxyform" ((wrap-params login/proxy-form) req)
+    (proxy-handler req))) ; Don't want to wrap params here as we don't want to parse the body - it will be forwarded along as is to the proxy instead
 
-(defn build-app-chain
+(defn- configure-jetty
+  "Callback to configure the jetty server"
+  [server]
+  nil)
+
+(defn- build-app-chain
   [domain]
-  (wrap-keyword-params 
-    (wrap-params 
-      (wrap-session router {:cookie-attrs { :domain domain :path "/" }}))))
+    ; can't wrap-params because it will read the input streams of forms - want to leave the body unparsed for proxied requests
+      (wrap-session router {:cookie-attrs { :domain domain :path "/" }}))
 
 (defn -main [& args]
   (if (< (count args) 3) 
@@ -142,4 +135,6 @@
         (register-authenticator)
         (run-jetty 
           (build-app-chain domain)
-          {:port (Integer/parseInt port)} ))))
+          {:port (Integer/parseInt port)
+          ; :configurator configure-jetty
+           } ))))

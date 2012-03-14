@@ -6,6 +6,7 @@
                  [ring/ring-jetty-adapter "1.0.2"]
                  [log4j/log4j "1.2.16"]
                  [org.clojure/tools.logging "0.1.0"]
+                 [commons-io/commons-io "2.1"]
                 ; [clj-http "0.1.3"]
                  ]
   :main authproxy.core
