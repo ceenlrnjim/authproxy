@@ -27,15 +27,6 @@
   [req]
   (.toUpperCase (name (:request-method req))))
 
-(defn convert-header-map
-  [headers]
-  (dissoc 
-    (reduce
-      #(assoc %1 (.getKey %2) (header-list-to-string (.getValue %2)))
-      {}
-      headers)
-    nil)) ; remove the HTTP 1.1/200 OK line 
-
 (defn cappend
   "Conditional append - if second member of each vector is non-nil both are appended to the string"
   [& pairs]

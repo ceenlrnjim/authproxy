@@ -5,10 +5,6 @@
   (:require [clojure.java.io :as io]))
 
 (def login-url (atom nil))
-(def credentials (atom {}))
-(defn user-password
-  [username]
-  (get @credentials username))
 
 ; TODO: what if the first request is a POST?
 (defn auth-redirect
@@ -25,22 +21,17 @@
         password (get (:form-params req) "password")
         target (get (:form-params req) "destination")]
     (log/debug "Logging in user:" username " and directing to" target)
-    ;(log/debug "Request: " req)
-    ;(log/debug "Session: " (:session req))
     ;TODO: validate credentials before storing - LDAPS bind to AD
-    (swap! credentials assoc username password)
     { :status 302
-      :session (assoc (:session req) "proxy-user" username)
+      :session (assoc (:session req) "proxy-user" username "proxy-pwd" password)
       :headers { "Location" target } }))
 
 (defn proxy-logout
   "Logs the current user out of the proxy so subsequent auto-authentication won't happen"
   [{session :session}]
-  (let [username (get session "proxy-user")]
-    (swap! credentials dissoc username)
-    { :status 200
-      :session (dissoc session "proxy-user")
-      :body (io/input-stream (io/resource "public/pxylogoutconfirm.html"))}))
+  { :status 200
+    :session (dissoc session "proxy-user" "proxy-pwd")
+    :body (io/input-stream (io/resource "public/pxylogoutconfirm.html"))})
 
 
 (defn- apply-destination
