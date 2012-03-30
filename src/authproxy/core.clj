@@ -106,7 +106,7 @@
 (defn- build-app-chain
   [domain]
     ; can't wrap-params because it will read the input streams of forms - want to leave the body unparsed for proxied requests
-      (wrap-session router {:cookie-attrs { :domain domain :path "/" }}))
+      (wrap-session router {:cookie-name "KSSOSESSION_ID" :cookie-attrs { :domain domain :path "/" }}))
 
 (defn -main [& args]
   (if (< (count args) 3) 
